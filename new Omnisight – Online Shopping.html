@@ -210,4 +210,5 @@ let T;try{T=localStorage.getItem("bz-theme")}catch(e){}
 theme(T||(matchMedia("(prefers-color-scheme:dark)").matches?"dark":"light"));
 $("#th").addEventListener("click",()=>theme(document.documentElement.dataset.theme=="dark"?"light":"dark"));
 window.addEventListener("hashchange",render);render();
-</script></body></html>
+</script></body>
+</html>
