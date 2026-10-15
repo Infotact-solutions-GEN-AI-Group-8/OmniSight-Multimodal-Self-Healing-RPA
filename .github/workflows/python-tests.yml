@@ -1,9 +1,17 @@
-
-name: Python Tests
+name: OmniSight Python Tests
 
 on:
   push:
+    branches:
+      - main
+      - teamlead-integration
+      - teamlead-fastapi
+      - member2-screenshots
   pull_request:
+    branches:
+      - main
+      - teamlead-integration
+      - teamlead-fastapi
 
 jobs:
   test:
@@ -30,8 +38,5 @@ jobs:
       - name: Compile screenshot module
         run: python -m py_compile responsive_screenshots.py
 
-      - name: Run responsive screenshot unit tests
-        run: python -m unittest discover -s tests -p "test_responsive_screenshots.py" -v
-
-      - name: Run remaining tests
+      - name: Run full test suite
         run: python -m unittest discover -s tests -v
