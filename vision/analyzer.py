@@ -77,8 +77,9 @@ def check_missing_elements(page, expected_selectors):
     return missing
 
 
+
 def compare_screenshots(first_path, second_path):
-    """Compare two screenshots and calculate the changed pixel ratio."""
+    """Compare screenshots and calculate the changed pixel ratio."""
     first_path = Path(first_path)
     second_path = Path(second_path)
 
@@ -98,10 +99,9 @@ def compare_screenshots(first_path, second_path):
             }
 
         difference = ImageChops.difference(first, second)
-
         changed_pixels = sum(
-            pixel != (0, 0, 0)
-            for pixel in difference.get_flattened_data()
+            value != 0
+            for value in difference.convert("L").get_flattened_data()
         )
 
         total_pixels = first.width * first.height
