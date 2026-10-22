@@ -67,3 +67,63 @@ select an appropriate recovery action.
                           |
                           v
                   Updated Automation
+
+
+## Responsive Screenshot Capture
+
+The responsive screenshot module captures and validates screenshots for
+four application routes across desktop, tablet, and mobile viewports.
+
+### Viewport sizes
+
+| Device | Width | Height |
+|---|---:|---:|
+| Desktop | 1440 | 900 |
+| Tablet | 768 | 1024 |
+| Mobile | 390 | 844 |
+
+### Screenshot locations
+
+Screenshots are organized by device:
+
+- `screenshots/desktop/`
+- `screenshots/tablet/`
+- `screenshots/mobile/`
+
+Each device folder contains screenshots for the homepage, product listing,
+cart, and checkout routes.
+
+### Run screenshot capture
+
+Activate your Python virtual environment, then run:
+
+```powershell
+python .\responsive_screenshots.py
+```
+
+The script reports successful captures and validates the generated
+screenshots.
+
+## Responsive UI Analyzer
+
+The module `vision/analyzer.py` provides these checks:
+
+- Detect horizontal overflow beyond the viewport.
+- Identify visible elements extending outside the viewport.
+- Check whether expected CSS selectors are missing or hidden.
+- Compare screenshots and calculate the changed-pixel ratio.
+- Return structured error information when screenshot comparison fails.
+
+The analyzer works with an existing Playwright page; importing the module
+does not automatically launch a browser.
+
+## Running Tests
+
+Run the test suite from the project root:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+The tests cover screenshot comparison, invalid or missing images,
+dimension mismatches, overflow analysis, and screenshot capture validation.
