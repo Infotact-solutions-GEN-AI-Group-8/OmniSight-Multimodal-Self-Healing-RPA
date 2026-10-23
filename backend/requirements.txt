@@ -4,3 +4,4 @@ pydantic
 Pillow
 playwright
 openai
+python-multipart
