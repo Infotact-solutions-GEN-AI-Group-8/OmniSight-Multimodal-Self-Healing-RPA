@@ -3,5 +3,5 @@ uvicorn[standard]
 pydantic
 Pillow
 playwright
-openai
 python-multipart
+google-genai
