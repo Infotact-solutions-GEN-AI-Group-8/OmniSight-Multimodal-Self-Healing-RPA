@@ -12,7 +12,6 @@ from vision.schemas import VisionAnalysis
 
 logger = logging.getLogger("omnisight.vision")
 
-
 SYSTEM_PROMPT = """
 You are OmniSight, an AI visual quality assurance engineer.
 
@@ -28,38 +27,30 @@ Look for:
 
 Only report defects supported by visible screenshot evidence.
 Do not claim to have inspected the DOM or source code.
-Do not invent CSS selectors.
-If an exact selector is unknown, return null.
+Do not invent CSS selectors. If an exact selector is unknown, return null.
 
 Return a JSON object with these fields:
 {
   "status": "completed",
-  "defect_detected": true,
+  "defect_detected": false,
   "summary": "Short explanation",
   "viewport": "desktop",
   "screenshot": null,
-  "issues": [
-    {
-      "type": "horizontal_overflow",
-      "severity": "high",
-      "element": null,
-      "description": "Description of the visible issue",
-      "confidence": 0.9,
-      "suggested_fix": {
-        "selector": null,
-        "css": {
-          "max-width": "100%"
-        },
-        "rationale": "Why the change might help"
-      }
-    }
-  ],
+  "issues": [],
   "limitations": []
 }
 
-Each issue must include all required fields.
+Each issue must contain:
+- type
+- severity
+- element
+- description
+- confidence
+- suggested_fix, containing selector, css, and rationale
+
 If no clear defect is visible, return defect_detected=false
 and an empty issues array.
+
 Do not return executable code.
 """
 
@@ -68,19 +59,23 @@ def analyze_screenshot(
     screenshot_path: str,
     viewport: str | None = None,
 ) -> VisionAnalysis:
-    """Analyze a screenshot with Gemini and validate the defect report."""
+    """Analyze a screenshot with Gemini and validate the result."""
 
     path = Path(screenshot_path)
 
     if not path.is_file():
         raise FileNotFoundError(f"Screenshot not found: {path}")
 
-    if path.suffix.lower() not in {
-        ".png",
-        ".jpg",
-        ".jpeg",
-        ".webp",
-    }:
+    mime_types = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+    }
+
+    extension = path.suffix.lower()
+
+    if extension not in mime_types:
         raise ValueError("Unsupported screenshot format.")
 
     if path.stat().st_size == 0:
@@ -96,29 +91,14 @@ def analyze_screenshot(
             "GEMINI_API_KEY or GOOGLE_API_KEY environment variable is missing."
         )
 
-    image_bytes = path.read_bytes()
-
-    mime_types = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".webp": "image/webp",
-    }
-
-    mime_type = mime_types[path.suffix.lower()]
-
-    model = os.getenv(
-        "GEMINI_MODEL",
-        "gemini-2.5-flash",
-    )
-
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     client = genai.Client(api_key=api_key)
 
     prompt = (
         SYSTEM_PROMPT
         + "\n\nAnalyze this screenshot for UI defects."
         + f"\nViewport: {viewport or 'unknown'}."
-        + "\nReturn only the JSON object."
+        + "\nReturn only a valid JSON object."
     )
 
     try:
@@ -127,8 +107,8 @@ def analyze_screenshot(
             contents=[
                 prompt,
                 types.Part.from_bytes(
-                    data=image_bytes,
-                    mime_type=mime_type,
+                    data=path.read_bytes(),
+                    mime_type=mime_types[extension],
                 ),
             ],
             config=types.GenerateContentConfig(
@@ -137,24 +117,19 @@ def analyze_screenshot(
             ),
         )
 
-        content = response.text
-
-        if not content:
+        if not response.text:
             raise ValueError("Gemini returned an empty response.")
 
-        result = json.loads(content)
+        result = json.loads(response.text)
 
-        # Keep screenshot metadata under application control.
+        # Use trusted application metadata for these fields.
         result["screenshot"] = str(path)
         result["viewport"] = viewport
 
         return VisionAnalysis.model_validate(result)
 
     except Exception:
-        logger.exception(
-            "Gemini screenshot analysis failed: %s",
-            path,
-        )
+        logger.exception("Gemini screenshot analysis failed: %s", path)
         raise
 
     finally:
