@@ -16,6 +16,7 @@ from agent.repair_engine import (
     apply_approved_css,
     capture_repaired_screenshot,
 )
+from agent.verification import verify_repair
 
 BASE_URL = "https://omnisight-mock-website.vercel.app"
 ARTIFACT_DIR = Path("artifacts/playwright")
@@ -343,6 +344,17 @@ def run_playwright_workflow(
 
                                         result["steps"][
                                             "post_repair_analysis_completed"
+                                        ] = True
+
+                                        # STEP 13: Compare before-and-after analysis.
+                                        verification = verify_repair(
+                                            analysis,
+                                            after_analysis,
+                                        )
+
+                                        result["verification"] = verification
+                                        result["steps"][
+                                            "repair_verification_completed"
                                         ] = True
 
                                     except Exception:
