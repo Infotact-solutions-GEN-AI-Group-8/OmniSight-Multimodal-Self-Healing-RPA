@@ -9,7 +9,6 @@ from pydantic import (
     field_validator,
 )
 
-
 # Supported visual defect severity levels.
 Severity = Literal[
     "critical",
@@ -41,11 +40,22 @@ class SuggestedCSSFix(BaseModel):
 
     @field_validator("css", mode="before")
     @classmethod
-    def normalize_null_css(cls, value):
-        """Convert null CSS suggestions into an empty dictionary."""
+    def normalize_css(cls, value):
+        """Normalize CSS strings and null values."""
 
         if value is None:
             return {}
+
+        if isinstance(value, str):
+            css_dict = {}
+
+            for declaration in value.split(";"):
+                if ":" in declaration:
+                    key, val = declaration.split(":", 1)
+
+                    css_dict[key.strip()] = val.strip()
+
+            return css_dict
 
         return value
 
@@ -61,6 +71,22 @@ class VisualIssue(BaseModel):
     )
 
     severity: Severity = "medium"
+
+    @field_validator("severity", mode="before")
+    @classmethod
+    def normalize_severity(cls, value):
+        """Normalize severity values from Gemini."""
+
+        if isinstance(value, str):
+            value = value.lower().strip()
+
+            if value == "minor":
+                return "low"
+
+            if value == "moderate":
+                return "medium"
+
+        return value
 
     element: str | None = Field(
         default=None,

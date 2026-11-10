@@ -28,3 +28,5 @@ htmlcov/
 
 # Logs
 *.log
+# Generated workflow artifacts
+artifacts/

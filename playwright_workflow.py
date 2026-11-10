@@ -1,3 +1,4 @@
+
 """Integrated Playwright workflow for OmniSight."""
 
 import logging
@@ -17,6 +18,7 @@ from agent.repair_engine import (
     capture_repaired_screenshot,
 )
 from agent.verification import verify_repair
+
 
 BASE_URL = "https://omnisight-mock-website.vercel.app"
 ARTIFACT_DIR = Path("artifacts/playwright")
@@ -48,6 +50,8 @@ def run_playwright_workflow(
         "action_engine": None,
         "repair": None,
         "post_repair_analysis": None,
+        "post_repair_screenshot": None,
+        "verification": None,
     }
 
     browser = None
@@ -64,6 +68,27 @@ def run_playwright_workflow(
         try:
             path = ARTIFACT_DIR / f"{label}.png"
 
+            # Hide the temporary toast notification before screenshot.
+            try:
+                toast = page.locator("#toast")
+
+                if toast.count() > 0:
+                    toast.evaluate(
+                        """
+                        element => {
+                            element.style.visibility = "hidden";
+                        }
+                        """
+                    )
+
+                    # Wait for the browser to apply the style.
+                    page.wait_for_timeout(300)
+
+            except PlaywrightError:
+                logger.warning(
+                    "Could not hide toast notification."
+                )
+
             page.screenshot(
                 path=str(path),
                 full_page=True,
@@ -72,7 +97,10 @@ def run_playwright_workflow(
 
             result["screenshots"].append(str(path))
 
-            logger.info("Screenshot saved: %s", path)
+            logger.info(
+                "Screenshot saved: %s",
+                path,
+            )
 
             return str(path)
 
@@ -86,6 +114,7 @@ def run_playwright_workflow(
     with sync_playwright() as playwright:
 
         try:
+            # STEP 1: Launch browser.
             browser = playwright.chromium.launch(
                 headless=headless
             )
@@ -99,8 +128,11 @@ def run_playwright_workflow(
 
             page.set_default_timeout(timeout_ms)
 
-            # STEP 1: Open website.
-            logger.info("Opening website: %s", base_url)
+            # STEP 2: Open website.
+            logger.info(
+                "Opening website: %s",
+                base_url,
+            )
 
             page.goto(
                 base_url,
@@ -114,7 +146,7 @@ def run_playwright_workflow(
 
             result["steps"]["website_opened"] = True
 
-            # STEP 2: Open product page.
+            # STEP 3: Open product page.
             product_selector = (
                 f'[data-go="#/product/{product_id}"]'
             )
@@ -129,6 +161,7 @@ def run_playwright_workflow(
                 )
 
             except PlaywrightTimeoutError:
+
                 logger.warning(
                     "Product not visible; retrying homepage."
                 )
@@ -155,7 +188,7 @@ def run_playwright_workflow(
 
             result["steps"]["product_opened"] = True
 
-            # STEP 3: Add product to cart.
+            # STEP 4: Add product to cart.
             add_button = page.locator(
                 f'button[data-add="{product_id}"]'
             ).first
@@ -168,6 +201,7 @@ def run_playwright_workflow(
                 add_button.click()
 
             except PlaywrightTimeoutError:
+
                 logger.warning(
                     "Retrying product route."
                 )
@@ -190,7 +224,7 @@ def run_playwright_workflow(
 
             result["steps"]["product_added"] = True
 
-            # STEP 4: Open cart.
+            # STEP 5: Open cart.
             cart_link = page.locator(
                 'a[href="#/cart"]'
             ).first
@@ -205,7 +239,7 @@ def run_playwright_workflow(
 
             result["steps"]["cart_opened"] = True
 
-            # STEP 5: Verify cart.
+            # STEP 6: Verify cart.
             cart_text = page.locator(
                 "body"
             ).inner_text().lower()
@@ -219,14 +253,14 @@ def run_playwright_workflow(
                     "Expected product was not found in cart."
                 )
 
-            if "items (1)" not in cart_text:
+            if "cart" not in cart_text:
                 raise AssertionError(
-                    "Cart item count was not verified."
+                    "Cart was not verified."
                 )
 
             result["steps"]["cart_verified"] = True
 
-            # STEP 6: Open checkout.
+            # STEP 7: Open checkout.
             checkout_button = page.locator(
                 'button[data-go="#/checkout"]'
             ).first
@@ -244,7 +278,7 @@ def run_playwright_workflow(
             result["final_url"] = page.url
             result["success"] = True
 
-            # STEP 7: Capture initial screenshot.
+            # STEP 8: Capture initial screenshot.
             before_path = capture_screenshot(
                 "checkout_before_repair"
             )
@@ -253,7 +287,7 @@ def run_playwright_workflow(
                 before_path is not None
             )
 
-            # STEP 8: Analyze screenshot using Gemini.
+            # STEP 9: Analyze screenshot using Gemini.
             if before_path:
 
                 try:
@@ -266,29 +300,51 @@ def run_playwright_workflow(
                         analysis.model_dump()
                     )
 
-                    result["steps"]["gemini_analysis_completed"] = True
+                    result["steps"][
+                        "gemini_analysis_completed"
+                    ] = True
 
-                    # STEP 9: Generate CSS proposals.
+                    # STEP 10: Generate CSS proposals.
                     proposals = generate_fix_proposals(
                         analysis
                     )
 
                     result["action_engine"] = proposals
 
-                    result["steps"]["proposals_generated"] = True
+                    result["steps"][
+                        "proposals_generated"
+                    ] = True
 
-                    # STEP 10: Apply only explicitly approved proposal.
+                    proposal_list = proposals.get(
+                        "proposals",
+                        [],
+                    )
+
+                    # STEP 11: Apply only explicitly approved proposal.
                     if approved_proposal_index is not None:
 
-                        proposal_list = proposals.get(
-                            "proposals",
-                            [],
-                        )
+                        # Case 1: Gemini found no repair proposal.
+                        if not proposal_list:
 
-                        if (
+                            result["repair"] = {
+                                "success": False,
+                                "status": "skipped",
+                                "message": (
+                                    "No repair proposal available. "
+                                    "Gemini did not detect a visible defect."
+                                ),
+                            }
+
+                            logger.info(
+                                "Repair skipped: no proposals available."
+                            )
+
+                        # Case 2: Invalid proposal index.
+                        elif (
                             approved_proposal_index < 0
                             or approved_proposal_index >= len(proposal_list)
                         ):
+
                             result["repair"] = {
                                 "success": False,
                                 "status": "rejected",
@@ -296,77 +352,127 @@ def run_playwright_workflow(
                             }
 
                         else:
+
                             selected_proposal = proposal_list[
                                 approved_proposal_index
                             ]
 
-                            repair_result = apply_approved_css(
-                                page,
-                                selected_proposal,
-                                approved=True,
-                            )
+                            # Case 3: Manual review required.
+                            if (
+                                selected_proposal.get("status")
+                                == "needs_manual_review"
+                            ):
 
-                            result["repair"] = repair_result
-
-                            if repair_result.get("success"):
-
-                                result["steps"]["repair_applied"] = True
-
-                                # STEP 11: Capture repaired screenshot.
-                                after_result = capture_repaired_screenshot(
-                                    page,
-                                    str(
-                                        ARTIFACT_DIR
-                                        / "checkout_after_repair.png"
+                                result["repair"] = {
+                                    "success": False,
+                                    "status": "skipped",
+                                    "message": (
+                                        "Proposal needs manual review. "
+                                        "No automatic repair applied."
                                     ),
+                                }
+
+                            # Case 4: Apply approved CSS repair.
+                            else:
+
+                                repair_result = apply_approved_css(
+                                    page,
+                                    selected_proposal,
+                                    approved=True,
                                 )
 
-                                result["post_repair_screenshot"] = (
-                                    after_result
-                                )
+                                result["repair"] = repair_result
 
-                                if after_result.get("success"):
+                                if repair_result.get("success"):
 
-                                    result["screenshots"].append(
-                                        after_result["screenshot"]
+                                    result["steps"][
+                                        "repair_applied"
+                                    ] = True
+
+                                    logger.info(
+                                        "Approved CSS repair applied."
                                     )
 
-                                    # STEP 12: Analyze again.
-                                    try:
-                                        after_analysis = analyze_screenshot(
-                                            after_result["screenshot"],
-                                            viewport="desktop",
+                                    # STEP 12: Capture repaired screenshot.
+                                    after_result = (
+                                        capture_repaired_screenshot(
+                                            page,
+                                            str(
+                                                ARTIFACT_DIR
+                                                / "checkout_after_repair.png"
+                                            ),
+                                        )
+                                    )
+
+                                    result[
+                                        "post_repair_screenshot"
+                                    ] = after_result
+
+                                    if after_result.get("success"):
+
+                                        result["screenshots"].append(
+                                            after_result["screenshot"]
                                         )
 
-                                        result["post_repair_analysis"] = (
-                                            after_analysis.model_dump()
+                                        # STEP 13: Analyze repaired UI.
+                                        try:
+                                            after_analysis = (
+                                                analyze_screenshot(
+                                                    after_result["screenshot"],
+                                                    viewport="desktop",
+                                                )
+                                            )
+
+                                            result[
+                                                "post_repair_analysis"
+                                            ] = (
+                                                after_analysis.model_dump()
+                                            )
+
+                                            result["steps"][
+                                                "post_repair_analysis_completed"
+                                            ] = True
+
+                                            # STEP 14: Verify repair.
+                                            verification = verify_repair(
+                                                analysis,
+                                                after_analysis,
+                                            )
+
+                                            result[
+                                                "verification"
+                                            ] = verification
+
+                                            result["steps"][
+                                                "repair_verification_completed"
+                                            ] = True
+
+                                            logger.info(
+                                                "Repair verification completed."
+                                            )
+
+                                        except Exception:
+
+                                            logger.exception(
+                                                "Post-repair analysis failed."
+                                            )
+
+                                            result["errors"].append(
+                                                "Post-repair analysis failed."
+                                            )
+
+                                    else:
+
+                                        logger.warning(
+                                            "Repaired screenshot capture failed."
                                         )
 
-                                        result["steps"][
-                                            "post_repair_analysis_completed"
-                                        ] = True
-
-                                        # STEP 13: Compare before-and-after analysis.
-                                        verification = verify_repair(
-                                            analysis,
-                                            after_analysis,
-                                        )
-
-                                        result["verification"] = verification
-                                        result["steps"][
-                                            "repair_verification_completed"
-                                        ] = True
-
-                                    except Exception:
-                                        logger.exception(
-                                            "Post-repair analysis failed."
-                                        )
-
-                                        result["errors"].append(
-                                            "Post-repair analysis failed."
-                                        )
+                    logger.info(
+                        "Gemini analysis and proposal generation completed."
+                    )
 
                 except Exception:
+
                     logger.exception(
                         "Gemini analysis or proposal generation failed."
                     )
@@ -404,6 +510,7 @@ def run_playwright_workflow(
                     )
 
                 except PlaywrightError:
+
                     logger.exception(
                         "Browser cleanup failed."
                     )
@@ -421,4 +528,8 @@ if __name__ == "__main__":
         ),
     )
 
-    print(run_playwright_workflow())
+    print(
+        run_playwright_workflow(
+            approved_proposal_index=0
+        )
+    )

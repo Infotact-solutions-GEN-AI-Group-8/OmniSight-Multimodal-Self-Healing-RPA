@@ -45,7 +45,14 @@ Each issue must contain:
 - element
 - description
 - confidence
-- suggested_fix, containing selector, css, and rationale
+- suggested_fix, containing selector, css, and rationale.
+- Return exactly ONE simple CSS selector.
+- Never return comma-separated selector alternatives.
+- Do not include commas, multiple selectors, or selector lists.
+- If the target is the toast element with id="toast", return exactly "#toast".
+- The selector must pass simple CSS selector validation.
+- Never return null for selector when a matching element is identifiable.
+- CSS must be a dictionary of property-value pairs.
 
 If no clear defect is visible, return defect_detected=false
 and an empty issues array.
@@ -117,7 +124,7 @@ def analyze_screenshot(
     # 5. Configure Gemini model.
     model = os.getenv(
         "GEMINI_MODEL",
-        "gemini-2.5-flash",
+        "gemini-3.5-flash-lite",
     )
 
     client = genai.Client(api_key=api_key)
