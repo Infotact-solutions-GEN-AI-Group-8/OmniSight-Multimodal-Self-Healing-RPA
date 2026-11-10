@@ -1,3 +1,4 @@
+
 """Action Engine for generating safe CSS fix proposals."""
 
 import re
@@ -14,11 +15,14 @@ ALLOWED_CSS_PROPERTIES = {
     "height",
     "max-height",
     "margin",
-    "margin-left",
+    "margin-top",
     "margin-right",
+    "margin-bottom",
+    "margin-left",
     "padding",
     "display",
     "position",
+    "bottom",  # Added for toast positioning repair
     "overflow",
     "overflow-x",
     "box-sizing",
