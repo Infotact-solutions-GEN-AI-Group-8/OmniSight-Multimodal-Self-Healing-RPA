@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, field_validator
 from vision.vlm_analyzer import analyze_screenshot
 from vision.schemas import VisionAnalysis
 from agent.action_engine import generate_fix_proposals
+from playwright_workflow import run_playwright_workflow
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,6 +43,15 @@ class BuildEvent(BaseModel):
     status: str = Field(min_length=1)
     commit_sha: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+class WorkflowRequest(BaseModel):
+    product_id: str = Field(default="41", min_length=1)
+    headless: bool = True
+    timeout_ms: int = Field(default=30000, ge=1000, le=120000)
+    approved_proposal_index: int | None = Field(
+        default=None,
+        ge=0,
+    )
 
     @field_validator(
         "event_type",
@@ -92,6 +102,44 @@ async def health_check():
         "status": "healthy",
         "service": "omnisight-backend",
     }
+
+@app.post("/run-workflow")
+def execute_workflow(request: WorkflowRequest):
+    """
+    Execute the complete OmniSight browser and AI workflow.
+    """
+
+    logger.info(
+        "Starting OmniSight workflow: product_id=%s",
+        request.product_id,
+    )
+
+    try:
+        result = run_playwright_workflow(
+            product_id=request.product_id,
+            headless=request.headless,
+            timeout_ms=request.timeout_ms,
+            approved_proposal_index=(
+                request.approved_proposal_index
+            ),
+        )
+
+        logger.info(
+            "OmniSight workflow finished: status=%s",
+            result.get("workflow_status"),
+        )
+
+        return result
+
+    except Exception:
+        logger.exception(
+            "Failed to execute OmniSight workflow."
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to execute OmniSight workflow.",
+        )
 
 @app.post("/webhook")
 async def receive_webhook(event: BuildEvent):
